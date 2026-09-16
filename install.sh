@@ -26,8 +26,15 @@ sudo install -Dm755 "$SCRIPT_DIR/bin/omarchy-vpn-servers" /usr/local/bin/omarchy
 sudo install -Dm755 "$SCRIPT_DIR/bin/omarchy-vpn-add-server" /usr/local/bin/omarchy-vpn-add-server
 sudo install -Dm755 "$SCRIPT_DIR/bin/omarchy-vpn-rename-server" /usr/local/bin/omarchy-vpn-rename-server
 
-echo "==> Ставлю sudoers-правило (разрешает без пароля только сам omarchy-vpn-ctl)"
-sudo install -Dm440 "$SCRIPT_DIR/sudoers/omarchy-vpn" /etc/sudoers.d/omarchy-vpn
+# shellcheck source=lib/sudoers.sh
+source "$SCRIPT_DIR/lib/sudoers.sh"
+sudoers_user=$(omneziavpn_sudoers_user)
+echo "==> Ставлю sudoers-правило для $sudoers_user (без пароля только omarchy-vpn-ctl)"
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+omneziavpn_render_sudoers > "$tmp"
+sudo visudo -c -f "$tmp"
+sudo install -Dm440 "$tmp" /etc/sudoers.d/omarchy-vpn
 sudo visudo -c -f /etc/sudoers.d/omarchy-vpn
 
 echo "==> Готово. Если виджет ещё не включён в баре:"

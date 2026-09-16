@@ -27,7 +27,7 @@ fi
 id=$(printf '%s' "$result" | jq -r '.id')
 name=$(printf '%s' "$result" | jq -r '.label')
 
-if ! printf '%s' "$result" | jq -r '.conf' | sudo -n omarchy-vpn-ctl save "$id"; then
+if ! printf '%s' "$result" | jq -r '.conf' | sudo -n /usr/local/bin/omarchy-vpn-ctl save "$id"; then
   echo "❌ Не удалось сохранить конфиг."
   omarchy-vpn-servers remove "$id" >/dev/null 2>&1 || true
   exit 1

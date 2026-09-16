@@ -48,8 +48,9 @@ cd ~/.config/omarchy/plugins/raphael01159.omneziavpn
 
 Скрипт проверяет зависимости и ставит `omarchy-vpn-ctl`,
 `omarchy-vpn-servers`, `omarchy-vpn-add-server`, `omarchy-vpn-rename-server`
-в `/usr/local/bin` плюс `/etc/sudoers.d/omarchy-vpn` (разрешает без пароля
-запускать только `omarchy-vpn-ctl`, ничего больше).
+в `/usr/local/bin` плюс `/etc/sudoers.d/omarchy-vpn` (разрешает пользователю,
+который запускает install.sh, без пароля запускать только
+`/usr/local/bin/omarchy-vpn-ctl`, ничего больше).
 
 Автоподключение к последнему серверу при старте бара включается через
 настройки плагина в Omarchy (Setup → Plugins → OmneziaVpn), поле
