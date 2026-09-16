@@ -1,0 +1,36 @@
+#!/bin/bash
+# Interactive add-server flow for the Omarchy VPN bar plugin, run in a
+# floating terminal (see bar/modules/vpn.qml). Parsing and metadata live in
+# omarchy-vpn-servers (unprivileged); only the final config write goes
+# through the root-owned omarchy-vpn-ctl.
+set -euo pipefail
+
+echo "Вставь ссылку vpn://... или готовый конфиг WireGuard/AmneziaWG целиком."
+echo "Esc или Ctrl+D — закончить ввод."
+echo
+
+paste=$(gum write --placeholder "vpn://... или [Interface]/[Peer] конфиг" --height 12 --width 76 --char-limit 20000)
+
+if [ -z "$paste" ]; then
+  echo "Пусто, отменено."
+  exit 0
+fi
+
+label=$(gum input --placeholder "Название сервера (необязательно)")
+
+echo "Разбираю конфиг…"
+if ! result=$(printf '%s' "$paste" | omarchy-vpn-servers add "$label"); then
+  echo "❌ Не удалось разобрать конфиг."
+  exit 1
+fi
+
+id=$(printf '%s' "$result" | jq -r '.id')
+name=$(printf '%s' "$result" | jq -r '.label')
+
+if ! printf '%s' "$result" | jq -r '.conf' | sudo -n omarchy-vpn-ctl save "$id"; then
+  echo "❌ Не удалось сохранить конфиг."
+  omarchy-vpn-servers remove "$id" >/dev/null 2>&1 || true
+  exit 1
+fi
+
+echo "✅ Сервер «$name» добавлен ($id). Включай его из панели VPN в баре."

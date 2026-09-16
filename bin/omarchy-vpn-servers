@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+"""Unprivileged catalog of configured AmneziaWG servers for the Omarchy VPN
+bar plugin. Only ever touches ~/.config/omarchy/vpn/servers.json (labels and
+generated interface ids) -- the actual key material lives root-only under
+/etc/amnezia/amneziawg/, written by omarchy-vpn-ctl."""
+import sys, os, re, json, base64, zlib, tempfile
+
+STORE_DIR = os.path.expanduser("~/.config/omarchy/vpn")
+STORE_PATH = os.path.join(STORE_DIR, "servers.json")
+ID_RE = re.compile(r"^[a-zA-Z0-9_=+.-]{1,15}$")
+
+
+def load():
+    try:
+        with open(STORE_PATH) as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    return []
+
+
+def store(servers):
+    os.makedirs(STORE_DIR, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=STORE_DIR)
+    with os.fdopen(fd, "w") as f:
+        json.dump(servers, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, STORE_PATH)
+
+
+def next_id(servers):
+    used = {s.get("id") for s in servers}
+    n = 1
+    while True:
+        candidate = "awg%d" % n
+        if candidate not in used:
+            return candidate
+        n += 1
+
+
+def decode_vpn_link(link):
+    body = link[len("vpn://"):] if link.startswith("vpn://") else link
+    padded = body + "=" * (-len(body) % 4)
+    raw = base64.urlsafe_b64decode(padded)
+    payload = zlib.decompress(raw[4:])
+    data = json.loads(payload)
+    awg = None
+    for container in data.get("containers") or []:
+        if "awg" in container:
+            awg = container["awg"]
+            break
+    if awg is None:
+        raise ValueError("ссылка не содержит секцию awg")
+    last = json.loads(awg["last_config"])
+    conf = last["config"]
+    conf = conf.replace("$PRIMARY_DNS", data.get("dns1", "1.1.1.1"))
+    conf = conf.replace("$SECONDARY_DNS", data.get("dns2", "1.0.0.1"))
+    label = data.get("description") or data.get("hostName") or "server"
+    return conf, label
+
+
+def parse_raw_conf(text):
+    if "[Interface]" not in text or "[Peer]" not in text:
+        raise ValueError("это не похоже на конфиг WireGuard/AmneziaWG")
+    label = "server"
+    m = re.search(r"^\s*Endpoint\s*=\s*([^\s:]+)", text, re.MULTILINE)
+    if m:
+        label = m.group(1)
+    return text, label
+
+
+def cmd_list():
+    print(json.dumps(load()))
+
+
+def cmd_add(label_arg):
+    text = sys.stdin.read().strip()
+    if not text:
+        print("пустой ввод", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        if text.startswith("vpn://"):
+            conf, auto_label = decode_vpn_link(text)
+        else:
+            conf, auto_label = parse_raw_conf(text)
+    except Exception as e:
+        print("ошибка разбора: %s" % e, file=sys.stderr)
+        sys.exit(1)
+
+    if not conf.endswith("\n"):
+        conf += "\n"
+
+    label = label_arg.strip() if label_arg and label_arg.strip() else auto_label
+
+    servers = load()
+    sid = next_id(servers)
+    servers.append({"id": sid, "label": label})
+    store(servers)
+    print(json.dumps({"id": sid, "label": label, "conf": conf}))
+
+
+def cmd_remove(server_id):
+    servers = [s for s in load() if s.get("id") != server_id]
+    store(servers)
+    print(json.dumps(servers))
+
+
+def cmd_seed(server_id, label):
+    servers = load()
+    if not any(s.get("id") == server_id for s in servers):
+        servers.append({"id": server_id, "label": label})
+        store(servers)
+    print(json.dumps(servers))
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("usage: omarchy-vpn-servers {list|add <label>|remove <id>}", file=sys.stderr)
+        sys.exit(1)
+
+    action = sys.argv[1]
+    if action == "list":
+        cmd_list()
+    elif action == "add":
+        cmd_add(sys.argv[2] if len(sys.argv) > 2 else "")
+    elif action == "remove":
+        if len(sys.argv) < 3:
+            print("remove needs <id>", file=sys.stderr)
+            sys.exit(1)
+        cmd_remove(sys.argv[2])
+    elif action == "seed":
+        if len(sys.argv) < 4:
+            print("seed needs <id> <label>", file=sys.stderr)
+            sys.exit(1)
+        cmd_seed(sys.argv[2], sys.argv[3])
+    else:
+        print("unknown action", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

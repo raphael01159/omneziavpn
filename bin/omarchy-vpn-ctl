@@ -1,0 +1,77 @@
+#!/bin/bash
+# Root-privileged control for AmneziaWG connections used by the Omarchy VPN
+# bar plugin. Every server id is validated against awg-quick's own interface
+# name pattern before it ever touches a path or command, so there is no
+# user-controlled input that reaches the shell unsanitized.
+set -euo pipefail
+
+DIR=/etc/amnezia/amneziawg
+NAME_RE='^[a-zA-Z0-9_=+.-]{1,15}$'
+
+require_name() {
+  [[ "$1" =~ $NAME_RE ]] || { echo "invalid server id" >&2; exit 1; }
+}
+
+active_iface() {
+  local f n
+  for f in "$DIR"/*.conf; do
+    [ -e "$f" ] || continue
+    n=$(basename "$f" .conf)
+    if awg show "$n" >/dev/null 2>&1; then
+      echo "$n"
+      return 0
+    fi
+  done
+  return 0
+}
+
+case "${1:-}" in
+  status)
+    active_iface || true
+    ;;
+  up)
+    name="${2:-}"
+    require_name "$name"
+    [ -f "$DIR/$name.conf" ] || { echo "unknown server: $name" >&2; exit 1; }
+    cur=$(active_iface || true)
+    if [ -n "$cur" ] && [ "$cur" != "$name" ]; then
+      awg-quick down "$cur"
+    fi
+    if [ "$cur" != "$name" ]; then
+      awg-quick up "$name"
+    fi
+    ;;
+  down)
+    cur=$(active_iface || true)
+    if [ -n "$cur" ]; then
+      awg-quick down "$cur"
+    fi
+    ;;
+  save)
+    name="${2:-}"
+    require_name "$name"
+    mkdir -p "$DIR"
+    tmp=$(mktemp "$DIR/.${name}.XXXXXX")
+    cat > "$tmp"
+    if ! grep -q '^\[Interface\]' "$tmp" || ! grep -q '^\[Peer\]' "$tmp"; then
+      rm -f "$tmp"
+      echo "invalid config: missing [Interface]/[Peer]" >&2
+      exit 1
+    fi
+    chmod 600 "$tmp"
+    mv "$tmp" "$DIR/$name.conf"
+    ;;
+  remove)
+    name="${2:-}"
+    require_name "$name"
+    cur=$(active_iface || true)
+    if [ "$cur" = "$name" ]; then
+      awg-quick down "$name"
+    fi
+    rm -f "$DIR/$name.conf"
+    ;;
+  *)
+    echo "usage: omarchy-vpn-ctl {up <id>|down|status|save <id>|remove <id>}" >&2
+    exit 1
+    ;;
+esac
