@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "raphael01159.omneziavpn",
   "name": "OmneziaVpn",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": "raphael01159",
   "license": "MIT",
   "description": "AmneziaWG/WireGuard toggle for the Omarchy bar — server list, live transfer stats, one-click connect.",
