@@ -66,6 +66,7 @@ class InstallAndCallers(unittest.TestCase):
         self.assertNotIn("sudoers/omarchy-vpn", src)
         self.assertIn("lib/sudoers.sh", src)
         self.assertNotIn('= "omarchy"', src)
+        self.assertIn('omneziavpn_render_sudoers "$sudoers_user"', src)
 
     def test_add_server_invokes_ctl_by_absolute_path(self):
         src = (ROOT / "bin" / "omarchy-vpn-add-server").read_text()
