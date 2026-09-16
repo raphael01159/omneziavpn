@@ -8,6 +8,7 @@ Item {
 
   property var bar: null
   property string moduleName: ""
+  property var settings: null
 
   property bool connected: false
   property string activeId: ""
@@ -15,6 +16,8 @@ Item {
   property bool busy: false
   property var servers: []
   property string errorText: ""
+  property var stats: ({})
+  property bool autoconnectTried: false
 
   implicitWidth: iconButton.implicitWidth
   implicitHeight: iconButton.implicitHeight
@@ -26,12 +29,44 @@ Item {
     return id
   }
 
+  function formatBytes(n) {
+    n = Number(n) || 0
+    var units = ["Б", "КБ", "МБ", "ГБ", "ТБ"]
+    var i = 0
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++ }
+    return (i === 0 ? n.toFixed(0) : n.toFixed(1)) + " " + units[i]
+  }
+
+  function formatHandshake(ts) {
+    ts = Number(ts) || 0
+    if (ts === 0) return ""
+    var secs = Math.max(0, Math.floor(Date.now() / 1000 - ts))
+    if (secs < 60) return secs + "с"
+    if (secs < 3600) return Math.floor(secs / 60) + "м"
+    return Math.floor(secs / 3600) + "ч"
+  }
+
+  function notify(summary, body, urgency) {
+    if (!root.bar) return
+    var args = "-a " + root.bar.shellQuote("OmneziaVpn")
+      + " -i network-vpn"
+      + " -u " + root.bar.shellQuote(urgency || "normal")
+      + " " + root.bar.shellQuote(summary)
+      + " " + root.bar.shellQuote(body || "")
+    root.bar.run("notify-send " + args)
+  }
+
   function refreshServers() {
     if (!serversProc.running) serversProc.running = true
   }
 
   function refreshStatus() {
     if (!statusProc.running) statusProc.running = true
+  }
+
+  function refreshStats() {
+    if (!root.connected) { root.stats = {}; return }
+    if (!statsProc.running) statsProc.running = true
   }
 
   Process {
@@ -53,9 +88,23 @@ Item {
     stdout: StdioCollector {
       onStreamFinished: {
         var id = text.trim()
+        var wasConnected = root.connected
         root.connected = id !== ""
         root.activeId = id
         if (id !== "") root.selectedId = id
+        if (root.connected) root.refreshStats()
+        else root.stats = {}
+        if (!wasConnected && !root.connected) root.maybeAutoconnect()
+      }
+    }
+  }
+
+  Process {
+    id: statsProc
+    command: ["/usr/bin/sudo", "-n", "/usr/local/bin/omarchy-vpn-ctl", "stats"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try { root.stats = JSON.parse(text || "{}") } catch (e) { root.stats = {} }
       }
     }
   }
@@ -64,6 +113,8 @@ Item {
     if (root.busy || !id) return
     root.busy = true
     root.selectedId = id
+    toggleProc.intent = "up"
+    toggleProc.intentId = id
     toggleProc.command = ["/usr/bin/sudo", "-n", "/usr/local/bin/omarchy-vpn-ctl", "up", id]
     toggleProc.running = true
   }
@@ -71,8 +122,28 @@ Item {
   function disconnectVpn() {
     if (root.busy) return
     root.busy = true
+    toggleProc.intent = "down"
+    toggleProc.intentId = ""
     toggleProc.command = ["/usr/bin/sudo", "-n", "/usr/local/bin/omarchy-vpn-ctl", "down"]
     toggleProc.running = true
+  }
+
+  function maybeAutoconnect() {
+    if (root.autoconnectTried) return
+    if (!(root.settings && root.settings.autoconnect)) return
+    root.autoconnectTried = true
+    lastProc.running = true
+  }
+
+  Process {
+    id: lastProc
+    command: ["/usr/bin/sudo", "-n", "/usr/local/bin/omarchy-vpn-ctl", "last"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var id = text.trim()
+        if (id && !root.connected) root.connectTo(id)
+      }
+    }
   }
 
   function toggle() {
@@ -87,12 +158,27 @@ Item {
 
   Process {
     id: toggleProc
+    property string intent: ""
+    property string intentId: ""
     stderr: StdioCollector { id: toggleErr; waitForEnd: true }
     onExited: function(code) {
       root.busy = false
-      root.errorText = code === 0 ? "" : (toggleErr.text.trim() || "Ошибка VPN")
+      var ok = code === 0
+      root.errorText = ok ? "" : (toggleErr.text.trim() || "Ошибка VPN")
+      if (intent === "up") {
+        if (ok) root.notify("VPN подключён", root.labelFor(intentId))
+        else root.notify("Не удалось подключиться", root.errorText, "critical")
+      } else if (intent === "down") {
+        if (ok) root.notify("VPN отключён", "")
+        else root.notify("Ошибка отключения", root.errorText, "critical")
+      }
       root.refreshStatus()
     }
+  }
+
+  function renameServer(id) {
+    popup.open = false
+    if (root.bar) root.bar.run("omarchy-launch-floating-terminal-with-presentation omarchy-vpn-rename-server " + id)
   }
 
   function removeServer(id) {
@@ -175,7 +261,7 @@ Item {
     id: popup
     anchorItem: iconButton
     bar: root.bar
-    contentWidth: popup.fittedContentWidth(Style.space(300))
+    contentWidth: popup.fittedContentWidth(Style.space(320))
     contentHeight: popup.fittedContentHeight(body.implicitHeight)
 
     Column {
@@ -239,6 +325,18 @@ Item {
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.caption
           }
+
+          Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            elide: Text.ElideRight
+            visible: root.connected && !root.busy && (root.stats.rx !== undefined || root.stats.tx !== undefined)
+            text: "↓" + root.formatBytes(root.stats.rx) + " ↑" + root.formatBytes(root.stats.tx)
+              + (root.formatHandshake(root.stats.handshake) ? " · " + root.formatHandshake(root.stats.handshake) : "")
+            color: Qt.darker(root.bar.foreground, 1.4)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+          }
         }
       }
 
@@ -296,9 +394,22 @@ Item {
               elide: Text.ElideRight
               anchors.left: dot.right
               anchors.leftMargin: Style.space(8)
-              anchors.right: removeBtn.left
+              anchors.right: renameBtn.left
               anchors.rightMargin: Style.space(4)
               anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Button {
+              id: renameBtn
+              text: "✎"
+              tooltipText: "Переименовать"
+              foreground: root.bar.foreground
+              horizontalPadding: Style.space(6)
+              verticalPadding: Style.space(2)
+              anchors.right: removeBtn.left
+              anchors.rightMargin: Style.space(2)
+              anchors.verticalCenter: parent.verticalCenter
+              onClicked: root.renameServer(rowItem.modelData.id)
             }
 
             Button {
@@ -316,7 +427,7 @@ Item {
 
             MouseArea {
               anchors.fill: parent
-              anchors.rightMargin: removeBtn.width + Style.space(8)
+              anchors.rightMargin: renameBtn.width + removeBtn.width + Style.space(10)
               cursorShape: Qt.PointingHandCursor
               onClicked: root.connectTo(rowItem.modelData.id)
             }

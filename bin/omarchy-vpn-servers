@@ -107,6 +107,25 @@ def cmd_remove(server_id):
     print(json.dumps(servers))
 
 
+def cmd_rename(server_id, label):
+    label = label.strip()
+    if not label:
+        print("пустое название", file=sys.stderr)
+        sys.exit(1)
+    servers = load()
+    found = False
+    for s in servers:
+        if s.get("id") == server_id:
+            s["label"] = label
+            found = True
+            break
+    if not found:
+        print("сервер не найден: %s" % server_id, file=sys.stderr)
+        sys.exit(1)
+    store(servers)
+    print(json.dumps(servers))
+
+
 def cmd_seed(server_id, label):
     servers = load()
     if not any(s.get("id") == server_id for s in servers):
@@ -117,7 +136,7 @@ def cmd_seed(server_id, label):
 
 def main():
     if len(sys.argv) < 2:
-        print("usage: omarchy-vpn-servers {list|add <label>|remove <id>}", file=sys.stderr)
+        print("usage: omarchy-vpn-servers {list|add <label>|remove <id>|rename <id> <label>}", file=sys.stderr)
         sys.exit(1)
 
     action = sys.argv[1]
@@ -130,6 +149,11 @@ def main():
             print("remove needs <id>", file=sys.stderr)
             sys.exit(1)
         cmd_remove(sys.argv[2])
+    elif action == "rename":
+        if len(sys.argv) < 4:
+            print("rename needs <id> <label>", file=sys.stderr)
+            sys.exit(1)
+        cmd_rename(sys.argv[2], sys.argv[3])
     elif action == "seed":
         if len(sys.argv) < 4:
             print("seed needs <id> <label>", file=sys.stderr)

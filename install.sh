@@ -22,23 +22,33 @@ echo "==> Копирую управляющие скрипты в /usr/local/bin
 sudo install -Dm755 "$SCRIPT_DIR/bin/omarchy-vpn-ctl" /usr/local/bin/omarchy-vpn-ctl
 sudo install -Dm755 "$SCRIPT_DIR/bin/omarchy-vpn-servers" /usr/local/bin/omarchy-vpn-servers
 sudo install -Dm755 "$SCRIPT_DIR/bin/omarchy-vpn-add-server" /usr/local/bin/omarchy-vpn-add-server
+sudo install -Dm755 "$SCRIPT_DIR/bin/omarchy-vpn-rename-server" /usr/local/bin/omarchy-vpn-rename-server
 
 echo "==> Ставлю sudoers-правило (разрешает только omarchy-vpn-ctl без пароля)"
 sudo install -Dm440 "$SCRIPT_DIR/sudoers/omarchy-vpn" /etc/sudoers.d/omarchy-vpn
 sudo visudo -c -f /etc/sudoers.d/omarchy-vpn
 
 CONFIG_JSON="$HOME/.config/omarchy/shell.json"
-if [ -f "$CONFIG_JSON" ] && command -v jq >/dev/null 2>&1; then
-  if jq -e '.. | objects | select(.id? == "vpn")' "$CONFIG_JSON" >/dev/null 2>&1; then
-    echo "==> В shell.json уже есть модуль vpn, пропускаю"
-  else
-    echo "==> Модуль 'vpn' не найден в shell.json."
-    echo "    Добавь вручную в массив modules бара объект: {\"id\": \"vpn\", \"type\": \"qml\"}"
-  fi
-else
-  echo "==> Не нашёл ~/.config/omarchy/shell.json — добавь модуль вручную:"
-  echo '    {"id": "vpn", "type": "qml"}'
+MODULE_ENTRY='{"id": "vpn", "type": "qml"}'
+
+if [ ! -f "$CONFIG_JSON" ]; then
+  echo "==> Создаю $CONFIG_JSON"
+  mkdir -p "$(dirname "$CONFIG_JSON")"
+  echo '{"version": 1, "bar": {"layout": {"right": []}}}' > "$CONFIG_JSON"
 fi
+
+if jq -e '.. | objects | select(.id? == "vpn")' "$CONFIG_JSON" >/dev/null 2>&1; then
+  echo "==> В shell.json уже есть модуль vpn, пропускаю"
+else
+  echo "==> Добавляю модуль vpn в правую секцию бара (shell.json)"
+  tmp=$(mktemp)
+  jq '.bar.layout.right = ((.bar.layout.right // []) + ['"$MODULE_ENTRY"'])' "$CONFIG_JSON" > "$tmp" \
+    && mv "$tmp" "$CONFIG_JSON" \
+    || { rm -f "$tmp"; echo "Не получилось отредактировать shell.json, добавь вручную: $MODULE_ENTRY"; }
+fi
+
+echo "==> Опционально: автоподключение к последнему серверу при старте бара —"
+echo '    добавь "settings": {"autoconnect": true} к модулю vpn в shell.json'
 
 echo "==> Перезапускаю бар"
 command -v omarchy-restart-shell >/dev/null 2>&1 && omarchy-restart-shell || echo "Перезапусти Omarchy shell вручную"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Root-privileged control for AmneziaWG connections used by the Omarchy VPN
+# Root-privileged control for AmneziaWG connections used by the OmneziaVpn
 # bar plugin. Every server id is validated against awg-quick's own interface
 # name pattern before it ever touches a path or command, so there is no
 # user-controlled input that reaches the shell unsanitized.
@@ -29,6 +29,29 @@ case "${1:-}" in
   status)
     active_iface || true
     ;;
+  stats)
+    cur=$(active_iface || true)
+    if [ -z "$cur" ]; then
+      echo '{}'
+      exit 0
+    fi
+    rx=0
+    tx=0
+    while read -r _peer r t _rest; do
+      rx=$((rx + ${r:-0}))
+      tx=$((tx + ${t:-0}))
+    done < <(awg show "$cur" transfer 2>/dev/null)
+    hs=0
+    while read -r _peer h; do
+      [ "${h:-0}" -gt "$hs" ] && hs=$h
+    done < <(awg show "$cur" latest-handshakes 2>/dev/null)
+    printf '{"rx":%s,"tx":%s,"handshake":%s}\n' "$rx" "$tx" "$hs"
+    ;;
+  last)
+    if [ -f "$DIR/.last" ]; then
+      cat "$DIR/.last"
+    fi
+    ;;
   up)
     name="${2:-}"
     require_name "$name"
@@ -40,6 +63,7 @@ case "${1:-}" in
     if [ "$cur" != "$name" ]; then
       awg-quick up "$name"
     fi
+    printf '%s' "$name" > "$DIR/.last"
     ;;
   down)
     cur=$(active_iface || true)
@@ -69,9 +93,12 @@ case "${1:-}" in
       awg-quick down "$name"
     fi
     rm -f "$DIR/$name.conf"
+    if [ -f "$DIR/.last" ] && [ "$(cat "$DIR/.last")" = "$name" ]; then
+      rm -f "$DIR/.last"
+    fi
     ;;
   *)
-    echo "usage: omarchy-vpn-ctl {up <id>|down|status|save <id>|remove <id>}" >&2
+    echo "usage: omarchy-vpn-ctl {up <id>|down|status|stats|last|save <id>|remove <id>}" >&2
     exit 1
     ;;
 esac

@@ -1,0 +1,24 @@
+#!/bin/bash
+# Interactive rename flow for the OmneziaVpn bar plugin, run in a floating
+# terminal (see bar/modules/vpn.qml). Only touches the label in
+# ~/.config/omarchy/vpn/servers.json -- no privileged calls needed.
+set -euo pipefail
+
+id="${1:-}"
+
+if [ -z "$id" ]; then
+  echo "usage: omarchy-vpn-rename-server <id>" >&2
+  exit 1
+fi
+
+old_label=$(omarchy-vpn-servers list | jq -r --arg id "$id" '.[] | select(.id==$id) | .label')
+
+label=$(gum input --placeholder "Новое название" --value "$old_label")
+
+if [ -z "$label" ] || [ "$label" = "$old_label" ]; then
+  echo "Без изменений."
+  exit 0
+fi
+
+omarchy-vpn-servers rename "$id" "$label" >/dev/null
+echo "✅ Переименовано в «$label»."
