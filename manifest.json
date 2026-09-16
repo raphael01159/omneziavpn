@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "raphael01159.omneziavpn",
+  "name": "OmneziaVpn",
+  "version": "1.1.0",
+  "author": "raphael01159",
+  "license": "MIT",
+  "description": "AmneziaWG/WireGuard toggle for the Omarchy bar — server list, live transfer stats, one-click connect.",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "BarWidget.qml" },
+  "barWidget": {
+    "displayName": "OmneziaVpn",
+    "description": "AmneziaWG/WireGuard toggle with server list, live transfer stats, and rename/remove from the popup.",
+    "category": "Network",
+    "aliases": ["vpn", "amnezia", "amneziawg", "wireguard"],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": { "autoconnect": "Off" },
+    "schema": [
+      {
+        "key": "autoconnect",
+        "type": "enum",
+        "label": "Автоподключение при старте бара",
+        "options": ["On", "Off"],
+        "defaultValue": "Off",
+        "description": "Подключаться к последнему использованному серверу, когда бар запускается и VPN ещё не поднят."
+      }
+    ]
+  }
+}

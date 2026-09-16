@@ -12,40 +12,39 @@ require_name() {
   [[ "$1" =~ $NAME_RE ]] || { echo "invalid server id" >&2; exit 1; }
 }
 
+# One "awg show interfaces" call plus plain string matching against the
+# configured names -- no per-config subprocess, unlike calling "awg show
+# <name>" once per saved server.
 active_iface() {
-  local f n
+  local ifaces=" $(awg show interfaces 2>/dev/null) " f n
   for f in "$DIR"/*.conf; do
     [ -e "$f" ] || continue
     n=$(basename "$f" .conf)
-    if awg show "$n" >/dev/null 2>&1; then
-      echo "$n"
-      return 0
-    fi
+    case "$ifaces" in *" $n "*) echo "$n"; return 0 ;; esac
   done
   return 0
 }
 
 case "${1:-}" in
   status)
-    active_iface || true
-    ;;
-  stats)
     cur=$(active_iface || true)
     if [ -z "$cur" ]; then
-      echo '{}'
+      echo '{"iface":""}'
       exit 0
     fi
+    # "dump" gives transfer counters and the handshake time for every peer
+    # in one call; the first line is interface info (skipped), not a peer.
     rx=0
     tx=0
-    while read -r _peer r t _rest; do
-      rx=$((rx + ${r:-0}))
-      tx=$((tx + ${t:-0}))
-    done < <(awg show "$cur" transfer 2>/dev/null)
     hs=0
-    while read -r _peer h; do
-      [ "${h:-0}" -gt "$hs" ] && hs=$h
-    done < <(awg show "$cur" latest-handshakes 2>/dev/null)
-    printf '{"rx":%s,"tx":%s,"handshake":%s}\n' "$rx" "$tx" "$hs"
+    first=1
+    while IFS=$'\t' read -r _f1 _f2 _f3 _f4 f5 f6 f7 _f8; do
+      if [ "$first" = 1 ]; then first=0; continue; fi
+      rx=$((rx + ${f6:-0}))
+      tx=$((tx + ${f7:-0}))
+      if [ -n "${f5:-}" ] && [ "$f5" -gt "$hs" ] 2>/dev/null; then hs=$f5; fi
+    done < <(awg show "$cur" dump 2>/dev/null)
+    printf '{"iface":"%s","rx":%s,"tx":%s,"handshake":%s}\n' "$cur" "$rx" "$tx" "$hs"
     ;;
   last)
     if [ -f "$DIR/.last" ]; then
@@ -98,7 +97,7 @@ case "${1:-}" in
     fi
     ;;
   *)
-    echo "usage: omarchy-vpn-ctl {up <id>|down|status|stats|last|save <id>|remove <id>}" >&2
+    echo "usage: omarchy-vpn-ctl {up <id>|down|status|last|save <id>|remove <id>}" >&2
     exit 1
     ;;
 esac

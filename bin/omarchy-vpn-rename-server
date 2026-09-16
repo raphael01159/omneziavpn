@@ -13,7 +13,7 @@ fi
 
 old_label=$(omarchy-vpn-servers list | jq -r --arg id "$id" '.[] | select(.id==$id) | .label')
 
-label=$(gum input --placeholder "Новое название" --value "$old_label")
+label=$(gum input --placeholder "Новое название" --value "$old_label") || { echo "Отменено."; exit 0; }
 
 if [ -z "$label" ] || [ "$label" = "$old_label" ]; then
   echo "Без изменений."

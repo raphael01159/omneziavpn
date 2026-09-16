@@ -9,14 +9,14 @@ echo "Вставь ссылку vpn://... или готовый конфиг Wir
 echo "Esc или Ctrl+D — закончить ввод."
 echo
 
-paste=$(gum write --placeholder "vpn://... или [Interface]/[Peer] конфиг" --height 12 --width 76 --char-limit 20000)
+paste=$(gum write --placeholder "vpn://... или [Interface]/[Peer] конфиг" --height 12 --width 76 --char-limit 20000) || { echo "Отменено."; exit 0; }
 
 if [ -z "$paste" ]; then
   echo "Пусто, отменено."
   exit 0
 fi
 
-label=$(gum input --placeholder "Название сервера (необязательно)")
+label=$(gum input --placeholder "Название сервера (необязательно)") || label=""
 
 echo "Разбираю конфиг…"
 if ! result=$(printf '%s' "$paste" | omarchy-vpn-servers add "$label"); then

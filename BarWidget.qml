@@ -46,13 +46,18 @@ Item {
     return Math.floor(secs / 3600) + "ч"
   }
 
+  // root.bar has no shellQuote (despite the plugin docs) -- quote locally.
+  function shq(value) {
+    return "'" + String(value || "").replace(/'/g, "'\\''") + "'"
+  }
+
   function notify(summary, body, urgency) {
     if (!root.bar) return
-    var args = "-a " + root.bar.shellQuote("OmneziaVpn")
+    var args = "-a " + root.shq("OmneziaVpn")
       + " -i network-vpn"
-      + " -u " + root.bar.shellQuote(urgency || "normal")
-      + " " + root.bar.shellQuote(summary)
-      + " " + root.bar.shellQuote(body || "")
+      + " -u " + root.shq(urgency || "normal")
+      + " " + root.shq(summary)
+      + " " + root.shq(body || "")
     root.bar.run("notify-send " + args)
   }
 
@@ -62,11 +67,6 @@ Item {
 
   function refreshStatus() {
     if (!statusProc.running) statusProc.running = true
-  }
-
-  function refreshStats() {
-    if (!root.connected) { root.stats = {}; return }
-    if (!statsProc.running) statsProc.running = true
   }
 
   Process {
@@ -87,24 +87,15 @@ Item {
     command: ["/usr/bin/sudo", "-n", "/usr/local/bin/omarchy-vpn-ctl", "status"]
     stdout: StdioCollector {
       onStreamFinished: {
-        var id = text.trim()
+        var data = {}
+        try { data = JSON.parse(text || "{}") } catch (e) { data = {} }
+        var id = data.iface || ""
         var wasConnected = root.connected
         root.connected = id !== ""
         root.activeId = id
         if (id !== "") root.selectedId = id
-        if (root.connected) root.refreshStats()
-        else root.stats = {}
+        root.stats = root.connected ? data : {}
         if (!wasConnected && !root.connected) root.maybeAutoconnect()
-      }
-    }
-  }
-
-  Process {
-    id: statsProc
-    command: ["/usr/bin/sudo", "-n", "/usr/local/bin/omarchy-vpn-ctl", "stats"]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        try { root.stats = JSON.parse(text || "{}") } catch (e) { root.stats = {} }
       }
     }
   }
@@ -130,7 +121,11 @@ Item {
 
   function maybeAutoconnect() {
     if (root.autoconnectTried) return
-    if (!(root.settings && root.settings.autoconnect)) return
+    // Manifest-plugin settings use the enum convention ("On"/"Off"); the
+    // legacy custom-module path in shell.json is free-form JSON and
+    // typically carries a plain boolean. Accept either.
+    var v = root.settings && root.settings.autoconnect
+    if (!(v === true || v === "On")) return
     root.autoconnectTried = true
     lastProc.running = true
   }
@@ -182,6 +177,7 @@ Item {
   }
 
   function removeServer(id) {
+    if (removeMetaProc.running || removeConfProc.running) return
     removeMetaProc.pendingId = id
     removeMetaProc.command = ["/usr/local/bin/omarchy-vpn-servers", "remove", id]
     removeMetaProc.running = true
@@ -207,8 +203,10 @@ Item {
     if (root.bar) root.bar.run("omarchy-launch-floating-terminal-with-presentation omarchy-vpn-add-server")
   }
 
+  // Poll gently while idle in the bar; speed up only while the popup is
+  // actually open, where a live-feeling refresh is worth the extra polls.
   Timer {
-    interval: 6000
+    interval: popup.open ? 3000 : 20000
     running: true
     repeat: true
     onTriggered: {
