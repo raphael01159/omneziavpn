@@ -10,12 +10,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "==> Проверка зависимостей"
 missing=()
-for bin in awg awg-quick gum jq python3 sudo; do
+for bin in awg awg-quick gum jq python3 sudo resolvconf; do
   command -v "$bin" >/dev/null 2>&1 || missing+=("$bin")
 done
 if [ "${#missing[@]}" -gt 0 ]; then
   echo "Не найдены: ${missing[*]}"
-  echo "Установи их, например: sudo pacman -S --needed amneziawg-tools gum jq python"
+  echo "Установи их, например: yay -S --needed amneziawg-tools amneziawg-dkms systemd-resolvconf gum jq python"
+  exit 1
+fi
+if ! modinfo amneziawg >/dev/null 2>&1 && ! command -v amneziawg-go >/dev/null 2>&1; then
+  echo "Нет datapath AmneziaWG: модуль ядра amneziawg или userspace amneziawg-go"
+  echo "Установи, например: yay -S --needed amneziawg-dkms"
+  echo "  (или userspace: yay -S --needed amneziawg-go)"
   exit 1
 fi
 command -v notify-send >/dev/null 2>&1 || echo "==> notify-send не найден — плагин будет работать, но без уведомлений (пакет libnotify)"

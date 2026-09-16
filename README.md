@@ -24,6 +24,8 @@
 ## Зависимости
 
 - `amneziawg-tools` (`awg`, `awg-quick`)
+- `amneziawg-dkms` (модуль ядра) **или** `amneziawg-go` (userspace fallback)
+- `systemd-resolvconf` (или другой провайдер `resolvconf`) — `awg-quick` ставит DNS через него
 - `gum`, `jq`, `python3`
 - `libnotify` (`notify-send`) — опционально, для уведомлений
 - Omarchy с Quickshell-баром
