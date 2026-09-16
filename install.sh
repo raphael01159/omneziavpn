@@ -32,7 +32,7 @@ sudoers_user=$(omneziavpn_sudoers_user)
 echo "==> Ставлю sudoers-правило для $sudoers_user (без пароля только omarchy-vpn-ctl)"
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
-omneziavpn_render_sudoers > "$tmp"
+omneziavpn_render_sudoers "$sudoers_user" > "$tmp"
 sudo visudo -c -f "$tmp"
 sudo install -Dm440 "$tmp" /etc/sudoers.d/omarchy-vpn
 sudo visudo -c -f /etc/sudoers.d/omarchy-vpn
